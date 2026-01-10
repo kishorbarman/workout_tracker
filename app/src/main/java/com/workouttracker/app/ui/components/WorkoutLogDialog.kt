@@ -29,7 +29,7 @@ fun WorkoutLogDialog(
     selectedDate: LocalDate,
     existingWorkouts: List<Workout> = emptyList(),
     onDismiss: () -> Unit,
-    onSave: (LocalDateTime, String, String) -> Unit,
+    onSave: (LocalDateTime, String, String, Int) -> Unit,
     onUpdate: (Workout) -> Unit = {},
     onDelete: (Workout) -> Unit = {}
 ) {
@@ -240,8 +240,8 @@ fun WorkoutLogDialog(
                         Slider(
                             value = durationMinutes.toFloat(),
                             onValueChange = { durationMinutes = it.roundToInt() },
-                            valueRange = 5f..180f,
-                            steps = 34, // (180-5)/5 - 1 = 34 steps for 5-minute increments
+                            valueRange = 5f..120f,
+                            steps = 22, // (120-5)/5 - 1 = 22 steps for 5-minute increments
                             modifier = Modifier.fillMaxWidth()
                         )
 
@@ -255,7 +255,7 @@ fun WorkoutLogDialog(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                             Text(
-                                text = "3 hrs",
+                                text = "2 hrs",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -341,7 +341,7 @@ fun WorkoutLogDialog(
                         onUpdate(updatedWorkout)
                     } else {
                         // Create new workout
-                        onSave(dateTime, selectedWorkoutType.name, notes)
+                        onSave(dateTime, selectedWorkoutType.name, notes, durationMinutes)
                     }
                     onDismiss()
                 }

@@ -27,8 +27,8 @@ fun WorkoutTrackerApp(
             onDateClick = { date ->
                 // Date click is handled in DashboardScreen to show workout dialog
             },
-            onAddWorkout = { dateTime, workoutType, notes ->
-                viewModel.addWorkout(dateTime, workoutType, notes)
+            onAddWorkout = { dateTime, workoutType, notes, durationMinutes ->
+                viewModel.addWorkout(dateTime, workoutType, notes, durationMinutes)
             },
             onUpdateWorkout = { workout ->
                 viewModel.updateWorkout(workout)

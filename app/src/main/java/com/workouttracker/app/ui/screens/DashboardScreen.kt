@@ -22,7 +22,7 @@ import java.time.Year
 fun DashboardScreen(
     uiState: WorkoutUiState,
     onDateClick: (LocalDate) -> Unit,
-    onAddWorkout: (java.time.LocalDateTime, String, String) -> Unit,
+    onAddWorkout: (java.time.LocalDateTime, String, String, Int) -> Unit,
     onUpdateWorkout: (com.workouttracker.app.data.local.entity.Workout) -> Unit,
     onDeleteWorkout: (com.workouttracker.app.data.local.entity.Workout) -> Unit,
     onYearChange: (Int) -> Unit,

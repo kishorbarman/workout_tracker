@@ -132,11 +132,12 @@ class WorkoutViewModel(
         _selectedYear.value = year
     }
 
-    fun addWorkout(dateTime: LocalDateTime, workoutType: String, notes: String) {
+    fun addWorkout(dateTime: LocalDateTime, workoutType: String, notes: String, durationMinutes: Int = 60) {
         viewModelScope.launch {
             try {
                 val workout = Workout(
                     dateTime = dateTime,
+                    endTime = dateTime.plusMinutes(durationMinutes.toLong()),
                     workoutType = workoutType,
                     notes = notes
                 )
