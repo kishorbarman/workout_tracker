@@ -247,6 +247,7 @@ fun WorkoutListItem(
             Icon(
                 imageVector = when (WorkoutType.fromString(workout.workoutType)) {
                     WorkoutType.CARDIO, WorkoutType.RUNNING -> Icons.Default.DirectionsRun
+                    WorkoutType.WALKING -> Icons.Default.DirectionsWalk
                     WorkoutType.STRENGTH -> Icons.Default.FitnessCenter
                     WorkoutType.YOGA -> Icons.Default.SelfImprovement
                     WorkoutType.CYCLING -> Icons.Default.DirectionsBike
