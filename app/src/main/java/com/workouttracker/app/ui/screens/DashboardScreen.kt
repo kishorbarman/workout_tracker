@@ -356,6 +356,114 @@ fun ProgressCard(
                         )
                     }
                 }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                val today = LocalDate.now()
+                val currentYear = Year.now().value
+
+                if (uiState.selectedYear == currentYear) {
+                    val totalDaysInYear = if (Year.of(uiState.selectedYear).isLeap) 366 else 365
+                    val dayOfYear = today.dayOfYear
+                    val expectedByNow = uiState.currentGoal.goalDays.toFloat() * dayOfYear / totalDaysInYear
+                    val isOnTrack = uiState.workoutDayCount >= expectedByNow
+                    val daysRemainingInYear = totalDaysInYear - dayOfYear
+                    val workoutsNeeded = maxOf(0, uiState.currentGoal.goalDays - uiState.workoutDayCount)
+                    val avgPerWeek = if (daysRemainingInYear > 0) workoutsNeeded.toFloat() / daysRemainingInYear * 7f else 0f
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Surface(
+                            shape = MaterialTheme.shapes.small,
+                            color = if (isOnTrack)
+                                MaterialTheme.colorScheme.tertiaryContainer
+                            else
+                                MaterialTheme.colorScheme.errorContainer
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    if (isOnTrack) Icons.Default.CheckCircle else Icons.Default.Warning,
+                                    contentDescription = null,
+                                    tint = if (isOnTrack)
+                                        MaterialTheme.colorScheme.onTertiaryContainer
+                                    else
+                                        MaterialTheme.colorScheme.onErrorContainer,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = if (isOnTrack) "On Track" else "Off Track",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (isOnTrack)
+                                        MaterialTheme.colorScheme.onTertiaryContainer
+                                    else
+                                        MaterialTheme.colorScheme.onErrorContainer
+                                )
+                            }
+                        }
+
+                        Column(horizontalAlignment = Alignment.End) {
+                            val frequencyLabel = when {
+                                workoutsNeeded == 0 -> "Goal achieved!"
+                                daysRemainingInYear <= 0 -> "Year ended"
+                                avgPerWeek > 7f -> "Goal unreachable"
+                                else -> "%.1f days/week needed".format(avgPerWeek)
+                            }
+                            Text(
+                                text = frequencyLabel,
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold
+                            )
+                            if (workoutsNeeded > 0 && daysRemainingInYear > 0 && avgPerWeek <= 7f) {
+                                Text(
+                                    text = "to reach goal",
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                            }
+                        }
+                    }
+                } else if (uiState.selectedYear < currentYear) {
+                    val goalMet = uiState.workoutDayCount >= uiState.currentGoal.goalDays
+                    Surface(
+                        shape = MaterialTheme.shapes.small,
+                        color = if (goalMet)
+                            MaterialTheme.colorScheme.tertiaryContainer
+                        else
+                            MaterialTheme.colorScheme.errorContainer
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                if (goalMet) Icons.Default.CheckCircle else Icons.Default.Cancel,
+                                contentDescription = null,
+                                tint = if (goalMet)
+                                    MaterialTheme.colorScheme.onTertiaryContainer
+                                else
+                                    MaterialTheme.colorScheme.onErrorContainer,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = if (goalMet) "Goal Achieved!" else "Goal Not Met",
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.Bold,
+                                color = if (goalMet)
+                                    MaterialTheme.colorScheme.onTertiaryContainer
+                                else
+                                    MaterialTheme.colorScheme.onErrorContainer
+                            )
+                        }
+                    }
+                }
             } else {
                 Text(
                     text = "No goal set for ${uiState.selectedYear}",
