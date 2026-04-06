@@ -2,6 +2,7 @@ package com.workouttracker.app.ui.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.workouttracker.app.data.backup.FirestoreService
 import com.workouttracker.app.data.backup.GoogleDriveBackupService
 import com.workouttracker.app.data.backup.GoogleCalendarService
 import com.workouttracker.app.data.local.entity.Workout
@@ -33,7 +34,8 @@ data class WorkoutUiState(
 class WorkoutViewModel(
     private val repository: WorkoutRepository,
     private val backupService: GoogleDriveBackupService,
-    private val calendarService: GoogleCalendarService
+    private val calendarService: GoogleCalendarService,
+    private val firestoreService: FirestoreService = FirestoreService()
 ) : ViewModel() {
 
     private val _selectedYear = MutableStateFlow(Year.now().value)
@@ -214,6 +216,12 @@ class WorkoutViewModel(
 
                 val driveResult = backupService.backupToGoogleDrive(allWorkouts, allGoals)
                 val calendarResult = calendarService.syncWorkoutsToCalendar(allWorkouts)
+
+                // Sync to Firestore for web app access
+                if (firestoreService.isSignedIn()) {
+                    firestoreService.syncWorkoutsToFirestore(allWorkouts)
+                    firestoreService.syncGoalsToFirestore(allGoals)
+                }
 
                 if (driveResult.isSuccess && calendarResult.isSuccess) {
                     _uiState.update {
