@@ -42,7 +42,10 @@ export default function WorkoutDialog({
   onDelete,
 }: WorkoutDialogProps) {
   const [workoutType, setWorkoutType] = useState<string>(WorkoutType.STRENGTH);
-  const [time, setTime] = useState('09:00');
+  const [time, setTime] = useState(() => {
+    const now = new Date();
+    return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+  });
   const [duration, setDuration] = useState(60);
   const [notes, setNotes] = useState('');
   const [editingWorkout, setEditingWorkout] = useState<Workout | null>(null);
@@ -50,7 +53,8 @@ export default function WorkoutDialog({
 
   function resetForm() {
     setWorkoutType(WorkoutType.STRENGTH);
-    setTime('09:00');
+    const now = new Date();
+    setTime(`${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`);
     setDuration(60);
     setNotes('');
     setEditingWorkout(null);
