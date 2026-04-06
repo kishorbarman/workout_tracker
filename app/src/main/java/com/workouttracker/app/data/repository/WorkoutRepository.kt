@@ -11,7 +11,6 @@ class WorkoutRepository(
     private val workoutDao: WorkoutDao,
     private val yearlyGoalDao: YearlyGoalDao
 ) {
-    // Workout operations
     fun getWorkoutsByYear(year: Int): Flow<List<Workout>> {
         return workoutDao.getWorkoutsByYear(year)
     }
@@ -40,7 +39,6 @@ class WorkoutRepository(
         workoutDao.deleteWorkout(workout)
     }
 
-    // Yearly goal operations
     fun getGoalForYear(year: Int): Flow<YearlyGoal?> {
         return yearlyGoalDao.getGoalForYear(year)
     }
@@ -53,21 +51,16 @@ class WorkoutRepository(
         yearlyGoalDao.insertGoal(YearlyGoal(year, goalDays))
     }
 
-    // Helper methods
-    suspend fun getWorkoutCountByMonth(year: Int, month: Int): Int {
-        val workouts = workoutDao.getWorkoutsByYear(year)
-        // This should be calculated in a more efficient way, but for now we'll do it in memory
-        // In a production app, you'd want to add a Room query for this
-        return 0 // TODO: Implement inViewModel
+    /**
+     * Replace all local data with data from Firestore.
+     */
+    suspend fun replaceAllWorkouts(workouts: List<Workout>) {
+        workoutDao.deleteAllWorkouts()
+        workouts.forEach { workoutDao.insertWorkout(it) }
     }
 
-    suspend fun getCurrentStreak(year: Int): Int {
-        // Calculate current streak - to be implemented in ViewModel
-        return 0
-    }
-
-    suspend fun getLongestStreak(year: Int): Int {
-        // Calculate longest streak - to be implemented in ViewModel
-        return 0
+    suspend fun replaceAllGoals(goals: List<YearlyGoal>) {
+        yearlyGoalDao.deleteAllGoals()
+        goals.forEach { yearlyGoalDao.insertGoal(it) }
     }
 }

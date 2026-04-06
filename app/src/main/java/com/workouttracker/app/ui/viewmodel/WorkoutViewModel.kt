@@ -1,5 +1,6 @@
 package com.workouttracker.app.ui.viewmodel
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.workouttracker.app.data.backup.FirestoreService
@@ -35,7 +36,7 @@ class WorkoutViewModel(
     private val repository: WorkoutRepository,
     private val backupService: GoogleDriveBackupService,
     private val calendarService: GoogleCalendarService,
-    private val firestoreService: FirestoreService = FirestoreService()
+    private val firestoreService: FirestoreService
 ) : ViewModel() {
 
     private val _selectedYear = MutableStateFlow(Year.now().value)
@@ -46,11 +47,20 @@ class WorkoutViewModel(
     init {
         observeSelectedYear()
         updateSignInStatus()
+        // If already signed into Firebase, pull latest from Firestore
+        if (firestoreService.isSignedIn()) {
+            syncFromFirestore()
+        }
     }
 
     fun updateSignInStatus() {
-        val isSignedIn = backupService.isSignedIn()
-        val (email, name) = backupService.getSignedInAccount()
+        // Check both Play Services (for Drive/Calendar) and Firebase Auth (for Firestore)
+        val playSignedIn = backupService.isSignedIn()
+        val firebaseSignedIn = firestoreService.isSignedIn()
+        val isSignedIn = playSignedIn || firebaseSignedIn
+
+        val email = firestoreService.getUserEmail() ?: backupService.getSignedInAccount().first
+        val name = firestoreService.getUserName() ?: backupService.getSignedInAccount().second
 
         _uiState.update {
             it.copy(
@@ -64,6 +74,7 @@ class WorkoutViewModel(
 
     fun signOut() {
         backupService.signOut()
+        firestoreService.signOut()
         updateSignInStatus()
     }
 
@@ -78,13 +89,11 @@ class WorkoutViewModel(
     private fun loadWorkoutsForYear(year: Int) {
         _uiState.update { it.copy(isLoading = true, selectedYear = year) }
 
-        // Collect workouts
         viewModelScope.launch {
             try {
                 repository.getWorkoutsByYear(year).collect { workouts ->
                     _uiState.update { it.copy(workouts = workouts) }
 
-                    // Update workout dates and streaks when workouts change
                     val dates = workouts.map { it.dateTime.toLocalDate() }.toSet()
                     val streaks = calculateStreaks(dates)
 
@@ -107,26 +116,20 @@ class WorkoutViewModel(
             }
         }
 
-        // Collect workout day count
         viewModelScope.launch {
             try {
                 repository.getWorkoutDayCountForYear(year).collect { count ->
                     _uiState.update { it.copy(workoutDayCount = count) }
                 }
-            } catch (e: Exception) {
-                // Silently fail for count
-            }
+            } catch (_: Exception) {}
         }
 
-        // Collect goal
         viewModelScope.launch {
             try {
                 repository.getGoalForYear(year).collect { goal ->
                     _uiState.update { it.copy(currentGoal = goal) }
                 }
-            } catch (e: Exception) {
-                // Silently fail for goal
-            }
+            } catch (_: Exception) {}
         }
     }
 
@@ -144,9 +147,7 @@ class WorkoutViewModel(
                     notes = notes
                 )
                 repository.insertWorkout(workout)
-
-                // Auto-sync to Google Drive
-                syncToGoogleDrive()
+                syncAfterMutation()
             } catch (e: Exception) {
                 _uiState.update {
                     it.copy(errorMessage = "Error adding workout: ${e.message}")
@@ -159,7 +160,7 @@ class WorkoutViewModel(
         viewModelScope.launch {
             try {
                 repository.updateWorkout(workout)
-                syncToGoogleDrive()
+                syncAfterMutation()
             } catch (e: Exception) {
                 _uiState.update {
                     it.copy(errorMessage = "Error updating workout: ${e.message}")
@@ -172,7 +173,7 @@ class WorkoutViewModel(
         viewModelScope.launch {
             try {
                 repository.deleteWorkout(workout)
-                syncToGoogleDrive()
+                syncAfterMutation()
             } catch (e: Exception) {
                 _uiState.update {
                     it.copy(errorMessage = "Error deleting workout: ${e.message}")
@@ -185,7 +186,7 @@ class WorkoutViewModel(
         viewModelScope.launch {
             try {
                 repository.setGoalForYear(year, goalDays)
-                syncToGoogleDrive()
+                syncAfterMutation()
             } catch (e: Exception) {
                 _uiState.update {
                     it.copy(errorMessage = "Error setting goal: ${e.message}")
@@ -194,63 +195,134 @@ class WorkoutViewModel(
         }
     }
 
-    fun syncToGoogleDrive() {
+    /**
+     * After any local mutation, push all data to Firestore + Drive + Calendar.
+     */
+    private fun syncAfterMutation() {
         viewModelScope.launch {
-            if (!backupService.isSignedIn()) {
-                _uiState.update { it.copy(lastSyncStatus = "Not signed in to Google") }
-                return@launch
-            }
-
-            _uiState.update { it.copy(isSyncing = true) }
-
             try {
-                val allWorkouts = mutableListOf<Workout>()
-                repository.getAllWorkouts().first().let { workouts ->
-                    allWorkouts.addAll(workouts)
-                }
+                val allWorkouts = repository.getAllWorkouts().first()
+                val allGoals = repository.getAllGoals().first()
 
-                val allGoals = mutableListOf<YearlyGoal>()
-                repository.getAllGoals().first().let { goals ->
-                    allGoals.addAll(goals)
-                }
-
-                val driveResult = backupService.backupToGoogleDrive(allWorkouts, allGoals)
-                val calendarResult = calendarService.syncWorkoutsToCalendar(allWorkouts)
-
-                // Sync to Firestore for web app access
+                // Sync to Firestore (primary shared data store)
                 if (firestoreService.isSignedIn()) {
                     firestoreService.syncWorkoutsToFirestore(allWorkouts)
                     firestoreService.syncGoalsToFirestore(allGoals)
                 }
 
-                if (driveResult.isSuccess && calendarResult.isSuccess) {
+                // Sync to Drive and Calendar (secondary backups)
+                if (backupService.isSignedIn()) {
+                    backupService.backupToGoogleDrive(allWorkouts, allGoals)
+                    calendarService.syncWorkoutsToCalendar(allWorkouts)
+                }
+            } catch (e: Exception) {
+                Log.e("WorkoutViewModel", "Sync after mutation failed", e)
+            }
+        }
+    }
+
+    /**
+     * Pull latest data from Firestore and replace local Room database.
+     * Called on sign-in and on manual sync.
+     */
+    fun syncFromFirestore() {
+        viewModelScope.launch {
+            if (!firestoreService.isSignedIn()) return@launch
+
+            _uiState.update { it.copy(isSyncing = true) }
+
+            try {
+                val workoutsResult = firestoreService.fetchAllWorkouts()
+                val goalsResult = firestoreService.fetchAllGoals()
+
+                if (workoutsResult.isSuccess && goalsResult.isSuccess) {
+                    val workouts = workoutsResult.getOrDefault(emptyList())
+                    val goals = goalsResult.getOrDefault(emptyList())
+
+                    // Replace local data with Firestore data
+                    repository.replaceAllWorkouts(workouts)
+                    repository.replaceAllGoals(goals)
+
+                    // Reload current view
+                    loadWorkoutsForYear(_selectedYear.value)
+
                     _uiState.update {
                         it.copy(
                             isSyncing = false,
-                            lastSyncStatus = "Synced successfully to Drive and Calendar"
+                            lastSyncStatus = "Synced from cloud (${workouts.size} workouts)"
                         )
                     }
                 } else {
-                    val errors = mutableListOf<String>()
-                    if (driveResult.isFailure) {
-                        errors.add("Drive: ${driveResult.exceptionOrNull()?.message}")
+                    val error = workoutsResult.exceptionOrNull()?.message
+                        ?: goalsResult.exceptionOrNull()?.message
+                        ?: "Unknown error"
+                    _uiState.update {
+                        it.copy(isSyncing = false, lastSyncStatus = "Sync failed: $error")
                     }
-                    if (calendarResult.isFailure) {
-                        errors.add("Calendar: ${calendarResult.exceptionOrNull()?.message}")
+                }
+            } catch (e: Exception) {
+                _uiState.update {
+                    it.copy(isSyncing = false, lastSyncStatus = "Sync failed: ${e.message}")
+                }
+            }
+        }
+    }
+
+    /**
+     * Legacy manual sync button — now syncs bidirectionally.
+     * Pulls from Firestore first, then pushes to Drive/Calendar.
+     */
+    fun syncToGoogleDrive() {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isSyncing = true) }
+
+            try {
+                // Pull from Firestore first (source of truth)
+                if (firestoreService.isSignedIn()) {
+                    val workoutsResult = firestoreService.fetchAllWorkouts()
+                    val goalsResult = firestoreService.fetchAllGoals()
+
+                    if (workoutsResult.isSuccess && goalsResult.isSuccess) {
+                        repository.replaceAllWorkouts(workoutsResult.getOrDefault(emptyList()))
+                        repository.replaceAllGoals(goalsResult.getOrDefault(emptyList()))
+                        loadWorkoutsForYear(_selectedYear.value)
                     }
+                }
+
+                // Then push to Drive and Calendar
+                val allWorkouts = repository.getAllWorkouts().first()
+                val allGoals = repository.getAllGoals().first()
+
+                if (backupService.isSignedIn()) {
+                    val driveResult = backupService.backupToGoogleDrive(allWorkouts, allGoals)
+                    val calendarResult = calendarService.syncWorkoutsToCalendar(allWorkouts)
+
+                    if (driveResult.isSuccess && calendarResult.isSuccess) {
+                        _uiState.update {
+                            it.copy(
+                                isSyncing = false,
+                                lastSyncStatus = "Synced: ${allWorkouts.size} workouts"
+                            )
+                        }
+                    } else {
+                        val errors = mutableListOf<String>()
+                        if (driveResult.isFailure) errors.add("Drive: ${driveResult.exceptionOrNull()?.message}")
+                        if (calendarResult.isFailure) errors.add("Calendar: ${calendarResult.exceptionOrNull()?.message}")
+                        _uiState.update {
+                            it.copy(isSyncing = false, lastSyncStatus = "Partial sync: ${errors.joinToString(", ")}")
+                        }
+                    }
+                } else {
                     _uiState.update {
                         it.copy(
                             isSyncing = false,
-                            lastSyncStatus = "Sync failed: ${errors.joinToString(", ")}"
+                            lastSyncStatus = "Synced from cloud (${allWorkouts.size} workouts)"
                         )
                     }
                 }
             } catch (e: Exception) {
                 _uiState.update {
-                    it.copy(
-                        isSyncing = false,
-                        lastSyncStatus = "Sync failed: ${e.message}"
-                    )
+                    it.copy(isSyncing = false, lastSyncStatus = "Sync failed: ${e.message}")
                 }
             }
         }
@@ -271,24 +343,24 @@ class WorkoutViewModel(
                 if (result.isSuccess) {
                     val backupData = result.getOrNull()!!
 
-                    // Restore workouts
                     backupData.workouts.forEach { workoutBackup ->
                         repository.insertWorkout(workoutBackup.toWorkout())
                     }
-
-                    // Restore goals
                     backupData.goals.forEach { goal ->
                         repository.setGoalForYear(goal.year, goal.goalDays)
                     }
 
-                    _uiState.update {
-                        it.copy(
-                            isSyncing = false,
-                            lastSyncStatus = "Restored successfully"
-                        )
+                    // Push restored data to Firestore
+                    if (firestoreService.isSignedIn()) {
+                        val allWorkouts = repository.getAllWorkouts().first()
+                        val allGoals = repository.getAllGoals().first()
+                        firestoreService.syncWorkoutsToFirestore(allWorkouts)
+                        firestoreService.syncGoalsToFirestore(allGoals)
                     }
 
-                    // Reload current year data
+                    _uiState.update {
+                        it.copy(isSyncing = false, lastSyncStatus = "Restored successfully")
+                    }
                     loadWorkoutsForYear(_selectedYear.value)
                 } else {
                     _uiState.update {
@@ -300,10 +372,7 @@ class WorkoutViewModel(
                 }
             } catch (e: Exception) {
                 _uiState.update {
-                    it.copy(
-                        isSyncing = false,
-                        lastSyncStatus = "Restore failed: ${e.message}"
-                    )
+                    it.copy(isSyncing = false, lastSyncStatus = "Restore failed: ${e.message}")
                 }
             }
         }
@@ -313,11 +382,9 @@ class WorkoutViewModel(
         if (workoutDates.isEmpty()) return Pair(0, 0)
 
         val sortedDates = workoutDates.sorted()
-        var currentStreak = 0
         var longestStreak = 0
         var tempStreak = 1
 
-        // Calculate longest streak
         for (i in 1 until sortedDates.size) {
             val daysDiff = java.time.temporal.ChronoUnit.DAYS.between(sortedDates[i - 1], sortedDates[i])
             if (daysDiff == 1L) {
@@ -329,14 +396,13 @@ class WorkoutViewModel(
         }
         longestStreak = maxOf(longestStreak, tempStreak)
 
-        // Calculate current streak
+        var currentStreak = 0
         val today = LocalDate.now()
         val yesterday = today.minusDays(1)
 
         if (sortedDates.contains(today) || sortedDates.contains(yesterday)) {
             currentStreak = 1
             var checkDate = if (sortedDates.contains(today)) today.minusDays(1) else yesterday.minusDays(1)
-
             while (sortedDates.contains(checkDate)) {
                 currentStreak++
                 checkDate = checkDate.minusDays(1)

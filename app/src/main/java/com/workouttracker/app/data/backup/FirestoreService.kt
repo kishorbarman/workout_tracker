@@ -28,6 +28,9 @@ class FirestoreService {
 
     fun getUserName(): String? = auth.currentUser?.displayName
 
+    /**
+     * Upload all local workouts to Firestore, replacing existing data.
+     */
     suspend fun syncWorkoutsToFirestore(workouts: List<Workout>): Result<String> =
         withContext(Dispatchers.IO) {
             try {
@@ -36,11 +39,11 @@ class FirestoreService {
 
                 val collection = workoutsCollection(userId)
 
-                // Delete existing workouts in Firestore and replace with local data
+                // Delete existing workouts in Firestore
                 val existing = collection.get().await()
-                val batch = firestore.batch()
-                existing.documents.forEach { batch.delete(it.reference) }
-                batch.commit().await()
+                for (doc in existing.documents) {
+                    doc.reference.delete().await()
+                }
 
                 // Upload all workouts
                 workouts.forEach { workout ->
@@ -60,6 +63,9 @@ class FirestoreService {
             }
         }
 
+    /**
+     * Upload all local goals to Firestore.
+     */
     suspend fun syncGoalsToFirestore(goals: List<YearlyGoal>): Result<String> =
         withContext(Dispatchers.IO) {
             try {
@@ -82,7 +88,10 @@ class FirestoreService {
             }
         }
 
-    suspend fun restoreWorkoutsFromFirestore(): Result<List<Workout>> =
+    /**
+     * Pull all workouts from Firestore.
+     */
+    suspend fun fetchAllWorkouts(): Result<List<Workout>> =
         withContext(Dispatchers.IO) {
             try {
                 val userId = getUserId()
@@ -117,7 +126,10 @@ class FirestoreService {
             }
         }
 
-    suspend fun restoreGoalsFromFirestore(): Result<List<YearlyGoal>> =
+    /**
+     * Pull all goals from Firestore.
+     */
+    suspend fun fetchAllGoals(): Result<List<YearlyGoal>> =
         withContext(Dispatchers.IO) {
             try {
                 val userId = getUserId()
