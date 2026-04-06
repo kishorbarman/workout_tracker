@@ -1,10 +1,16 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Background -->
   <rect width="512" height="512" rx="96" fill="#6750A4"/>
-  <g transform="translate(256,256) rotate(-45)" stroke="#FFFFFF" stroke-width="28" stroke-linecap="round" fill="none">
-    <line x1="-80" y1="0" x2="80" y2="0"/>
-    <line x1="-120" y1="-40" x2="-120" y2="40"/>
-    <line x1="120" y1="-40" x2="120" y2="40"/>
-    <line x1="-80" y1="-60" x2="-80" y2="60"/>
-    <line x1="80" y1="-60" x2="80" y2="60"/>
-  </g>
+
+  <!-- Dumbbell -->
+  <!-- Left end cap -->
+  <rect x="86" y="216" width="22" height="80" rx="6" fill="white"/>
+  <!-- Left weight plate -->
+  <rect x="108" y="182" width="62" height="148" rx="10" fill="white"/>
+  <!-- Bar -->
+  <rect x="170" y="244" width="172" height="24" rx="8" fill="white"/>
+  <!-- Right weight plate -->
+  <rect x="342" y="182" width="62" height="148" rx="10" fill="white"/>
+  <!-- Right end cap -->
+  <rect x="404" y="216" width="22" height="80" rx="6" fill="white"/>
 </svg>

@@ -46,7 +46,7 @@ fun WorkoutTrackerApp(
                 showGoalDialog = true
             },
             onSyncClick = {
-                viewModel.syncToGoogleDrive()
+                viewModel.sync()
             },
             onSignInClick = onSignInClick,
             onSignOutClick = {

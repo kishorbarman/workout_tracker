@@ -46,7 +46,6 @@ android {
     }
     packaging {
         resources {
-            // excludes += "/META-INF/{AL2.0,LGPL2.1}"
             excludes += listOf("META-INF/INDEX.LIST", "META-INF/*.LIST", "META-INF/DEPENDENCIES")
         }
     }
@@ -74,17 +73,8 @@ dependencies {
     implementation("androidx.room:room-ktx:$roomVersion")
     ksp("androidx.room:room-compiler:$roomVersion")
 
-    // Google Drive API
+    // Google Sign-In (for Firebase Auth)
     implementation("com.google.android.gms:play-services-auth:20.7.0")
-    implementation("com.google.apis:google-api-services-drive:v3-rev20251210-2.0.0")
-    implementation("com.google.api-client:google-api-client-android:2.2.0")
-    implementation("com.google.http-client:google-http-client-android:1.43.3")
-
-    // Google Calendar API
-    implementation("com.google.apis:google-api-services-calendar:v3-rev20240705-2.0.0")
-
-    // Gson for JSON serialization
-    implementation("com.google.code.gson:gson:2.10.1")
 
     // Firebase
     implementation(platform("com.google.firebase:firebase-bom:32.7.0"))

@@ -69,7 +69,7 @@ fun DashboardScreen(
                     }
 
                     IconButton(onClick = onSyncClick) {
-                        Icon(Icons.Default.CloudSync, contentDescription = "Sync with Google Drive")
+                        Icon(Icons.Default.CloudSync, contentDescription = "Sync")
                     }
                 }
             )
@@ -157,7 +157,7 @@ fun DashboardScreen(
                         )
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                text = if (uiState.isSignedIn) "Google Account" else "Google Drive Backup",
+                                text = if (uiState.isSignedIn) "Google Account" else "Cloud Sync",
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold
                             )
