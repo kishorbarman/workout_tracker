@@ -9,6 +9,8 @@ import com.workouttracker.app.data.local.entity.YearlyGoal
 import com.workouttracker.app.data.repository.WorkoutRepository
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.Year
@@ -34,6 +36,9 @@ class WorkoutViewModel(
     private val repository: WorkoutRepository,
     private val firestoreService: FirestoreService
 ) : ViewModel() {
+
+    // Serializes all Firestore operations so push and pull don't overlap
+    private val firestoreMutex = Mutex()
 
     private val _selectedYear = MutableStateFlow(Year.now().value)
 
@@ -174,23 +179,27 @@ class WorkoutViewModel(
 
     /**
      * Push all local data to Firestore after a mutation.
+     * Uses mutex so this completes before any pull can start.
      */
     private fun pushToFirestore() {
         viewModelScope.launch {
             if (!firestoreService.isSignedIn()) return@launch
-            try {
-                val allWorkouts = repository.getAllWorkouts().first()
-                val allGoals = repository.getAllGoals().first()
-                firestoreService.syncWorkoutsToFirestore(allWorkouts)
-                firestoreService.syncGoalsToFirestore(allGoals)
-            } catch (e: Exception) {
-                Log.e("WorkoutViewModel", "Firestore push failed", e)
+            firestoreMutex.withLock {
+                try {
+                    val allWorkouts = repository.getAllWorkouts().first()
+                    val allGoals = repository.getAllGoals().first()
+                    firestoreService.syncWorkoutsToFirestore(allWorkouts)
+                    firestoreService.syncGoalsToFirestore(allGoals)
+                } catch (e: Exception) {
+                    Log.e("WorkoutViewModel", "Firestore push failed", e)
+                }
             }
         }
     }
 
     /**
      * Pull data from Firestore and replace local Room DB.
+     * Uses mutex so this waits for any in-flight push to finish first.
      */
     fun syncFromFirestore() {
         viewModelScope.launch {
@@ -198,34 +207,36 @@ class WorkoutViewModel(
 
             _uiState.update { it.copy(isSyncing = true) }
 
-            try {
-                val workoutsResult = firestoreService.fetchAllWorkouts()
-                val goalsResult = firestoreService.fetchAllGoals()
+            firestoreMutex.withLock {
+                try {
+                    val workoutsResult = firestoreService.fetchAllWorkouts()
+                    val goalsResult = firestoreService.fetchAllGoals()
 
-                if (workoutsResult.isSuccess && goalsResult.isSuccess) {
-                    val workouts = workoutsResult.getOrDefault(emptyList())
-                    val goals = goalsResult.getOrDefault(emptyList())
+                    if (workoutsResult.isSuccess && goalsResult.isSuccess) {
+                        val workouts = workoutsResult.getOrDefault(emptyList())
+                        val goals = goalsResult.getOrDefault(emptyList())
 
-                    repository.replaceAllWorkouts(workouts)
-                    repository.replaceAllGoals(goals)
-                    loadWorkoutsForYear(_selectedYear.value)
+                        repository.replaceAllWorkouts(workouts)
+                        repository.replaceAllGoals(goals)
+                        loadWorkoutsForYear(_selectedYear.value)
 
-                    _uiState.update {
-                        it.copy(
-                            isSyncing = false,
-                            lastSyncStatus = "Synced (${workouts.size} workouts)"
-                        )
+                        _uiState.update {
+                            it.copy(
+                                isSyncing = false,
+                                lastSyncStatus = "Synced (${workouts.size} workouts)"
+                            )
+                        }
+                    } else {
+                        val error = workoutsResult.exceptionOrNull()?.message
+                            ?: goalsResult.exceptionOrNull()?.message ?: "Unknown error"
+                        _uiState.update {
+                            it.copy(isSyncing = false, lastSyncStatus = "Sync failed: $error")
+                        }
                     }
-                } else {
-                    val error = workoutsResult.exceptionOrNull()?.message
-                        ?: goalsResult.exceptionOrNull()?.message ?: "Unknown error"
+                } catch (e: Exception) {
                     _uiState.update {
-                        it.copy(isSyncing = false, lastSyncStatus = "Sync failed: $error")
+                        it.copy(isSyncing = false, lastSyncStatus = "Sync failed: ${e.message}")
                     }
-                }
-            } catch (e: Exception) {
-                _uiState.update {
-                    it.copy(isSyncing = false, lastSyncStatus = "Sync failed: ${e.message}")
                 }
             }
         }

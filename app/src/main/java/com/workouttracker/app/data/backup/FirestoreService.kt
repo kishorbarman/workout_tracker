@@ -29,7 +29,8 @@ class FirestoreService {
     fun getUserName(): String? = auth.currentUser?.displayName
 
     /**
-     * Upload all local workouts to Firestore, replacing existing data.
+     * Upload all local workouts to Firestore using batched writes.
+     * Deletes all existing docs and writes new ones atomically.
      */
     suspend fun syncWorkoutsToFirestore(workouts: List<Workout>): Result<String> =
         withContext(Dispatchers.IO) {
@@ -39,22 +40,48 @@ class FirestoreService {
 
                 val collection = workoutsCollection(userId)
 
-                // Delete existing workouts in Firestore
+                // Get existing docs to delete
                 val existing = collection.get().await()
-                for (doc in existing.documents) {
-                    doc.reference.delete().await()
-                }
 
-                // Upload all workouts
-                workouts.forEach { workout ->
-                    val data = hashMapOf(
-                        "dateTime" to workout.dateTime.format(DateTimeFormatter.ISO_LOCAL_DATE_TIME),
-                        "endTime" to workout.endTime.format(DateTimeFormatter.ISO_LOCAL_DATE_TIME),
-                        "workoutType" to workout.workoutType,
-                        "notes" to workout.notes,
-                        "year" to workout.year
-                    )
-                    collection.add(data).await()
+                // Firestore batches support max 500 operations.
+                // Process in chunks: each chunk deletes old + writes new.
+                val docsToDelete = existing.documents
+                val allOps = mutableListOf<suspend () -> Unit>()
+
+                // Build batched deletes + writes in groups of 450
+                // (leave headroom under the 500 limit)
+                val batchSize = 450
+                var deleteIndex = 0
+                var writeIndex = 0
+
+                while (deleteIndex < docsToDelete.size || writeIndex < workouts.size) {
+                    val batch = firestore.batch()
+                    var opsInBatch = 0
+
+                    // Add deletes
+                    while (deleteIndex < docsToDelete.size && opsInBatch < batchSize) {
+                        batch.delete(docsToDelete[deleteIndex].reference)
+                        deleteIndex++
+                        opsInBatch++
+                    }
+
+                    // Add writes
+                    while (writeIndex < workouts.size && opsInBatch < batchSize) {
+                        val workout = workouts[writeIndex]
+                        val data = hashMapOf(
+                            "dateTime" to workout.dateTime.format(DateTimeFormatter.ISO_LOCAL_DATE_TIME),
+                            "endTime" to workout.endTime.format(DateTimeFormatter.ISO_LOCAL_DATE_TIME),
+                            "workoutType" to workout.workoutType,
+                            "notes" to workout.notes,
+                            "year" to workout.year
+                        )
+                        val newDocRef = collection.document()
+                        batch.set(newDocRef, data)
+                        writeIndex++
+                        opsInBatch++
+                    }
+
+                    batch.commit().await()
                 }
 
                 Result.success("Synced ${workouts.size} workouts to Firestore")
@@ -64,7 +91,7 @@ class FirestoreService {
         }
 
     /**
-     * Upload all local goals to Firestore.
+     * Upload all local goals to Firestore using batched writes.
      */
     suspend fun syncGoalsToFirestore(goals: List<YearlyGoal>): Result<String> =
         withContext(Dispatchers.IO) {
@@ -73,15 +100,17 @@ class FirestoreService {
                     ?: return@withContext Result.failure(Exception("Not signed in"))
 
                 val collection = goalsCollection(userId)
+                val batch = firestore.batch()
 
                 goals.forEach { goal ->
                     val data = hashMapOf(
                         "year" to goal.year,
                         "goalDays" to goal.goalDays
                     )
-                    collection.document(goal.year.toString()).set(data).await()
+                    batch.set(collection.document(goal.year.toString()), data)
                 }
 
+                batch.commit().await()
                 Result.success("Synced ${goals.size} goals to Firestore")
             } catch (e: Exception) {
                 Result.failure(e)
