@@ -182,21 +182,26 @@ export default function DashboardPage() {
               </Box>
 
               {selectedYear === currentYear && (
-                <Box display="flex" justifyContent="space-between" alignItems="center" mt={2}>
-                  <Chip
-                    icon={isOnTrack ? <CheckCircle /> : <Warning />}
-                    label={isOnTrack ? 'On Track' : 'Off Track'}
-                    color={isOnTrack ? 'success' : 'error'}
-                    size="small"
-                  />
-                  <Typography variant="body2" fontWeight={600}>
-                    {workoutsNeeded === 0
-                      ? 'Goal achieved!'
-                      : daysRemainingInYear <= 0
-                        ? 'Year ended'
-                        : avgPerWeek > 7
-                          ? 'Goal unreachable'
-                          : `${avgPerWeek.toFixed(1)} days/week needed`}
+                <Box mt={2}>
+                  <Box display="flex" justifyContent="space-between" alignItems="center">
+                    <Chip
+                      icon={isOnTrack ? <CheckCircle /> : <Warning />}
+                      label={isOnTrack ? 'On Track' : 'Off Track'}
+                      color={isOnTrack ? 'success' : 'error'}
+                      size="small"
+                    />
+                    <Typography variant="body2" fontWeight={600}>
+                      {workoutsNeeded === 0
+                        ? 'Goal achieved!'
+                        : daysRemainingInYear <= 0
+                          ? 'Year ended'
+                          : avgPerWeek > 7
+                            ? 'Goal unreachable'
+                            : `${avgPerWeek.toFixed(1)} days/week needed`}
+                    </Typography>
+                  </Box>
+                  <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                    Expected by today: {Math.round(expectedByNow)} days
                   </Typography>
                 </Box>
               )}
