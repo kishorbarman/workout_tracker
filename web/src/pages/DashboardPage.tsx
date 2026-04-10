@@ -201,7 +201,7 @@ export default function DashboardPage() {
                     </Typography>
                   </Box>
                   <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-                    Expected by today: {Math.round(expectedByNow)} days
+                    Expected by today: {expectedByNow.toFixed(1)} days
                   </Typography>
                 </Box>
               )}
