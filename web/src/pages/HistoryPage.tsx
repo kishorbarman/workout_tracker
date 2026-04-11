@@ -8,6 +8,13 @@ import {
   ListItem,
   ListItemIcon,
   ListItemText,
+  IconButton,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogContentText,
+  DialogActions,
+  Button,
 } from '@mui/material';
 import {
   DirectionsRun,
@@ -17,12 +24,14 @@ import {
   DirectionsBike,
   Pool,
   SportsHandball,
+  Delete,
 } from '@mui/icons-material';
 import { format, parseISO, getWeek, subWeeks, startOfWeek, subMonths, getDaysInMonth } from 'date-fns';
 import { useAuth } from '../contexts/AuthContext';
 import { useWorkouts } from '../hooks/useWorkouts';
 import Layout from '../components/Layout';
-import { WorkoutType, workoutTypeDisplayNames } from '../types';
+import { WorkoutType, Workout, workoutTypeDisplayNames } from '../types';
+import { deleteWorkout } from '../services/workoutService';
 import { useState } from 'react';
 
 function getWorkoutIcon(type: string) {
@@ -51,6 +60,15 @@ export default function HistoryPage() {
   const { user } = useAuth();
   const [selectedYear] = useState(new Date().getFullYear());
   const { workouts } = useWorkouts(user?.uid, selectedYear);
+
+  const [deleteTarget, setDeleteTarget] = useState<Workout | null>(null);
+
+  const handleDelete = async () => {
+    if (deleteTarget && user) {
+      await deleteWorkout(user.uid, deleteTarget.id);
+      setDeleteTarget(null);
+    }
+  };
 
   const sortedWorkouts = [...workouts].sort(
     (a, b) => new Date(b.dateTime).getTime() - new Date(a.dateTime).getTime()
@@ -150,7 +168,13 @@ export default function HistoryPage() {
         <List disablePadding>
           {sortedWorkouts.map((workout) => (
             <Card key={workout.id} sx={{ mb: 1 }}>
-              <ListItem>
+              <ListItem
+                secondaryAction={
+                  <IconButton edge="end" onClick={() => setDeleteTarget(workout)} color="error" size="small">
+                    <Delete />
+                  </IconButton>
+                }
+              >
                 <ListItemIcon sx={{ color: 'primary.main' }}>
                   {getWorkoutIcon(workout.workoutType)}
                 </ListItemIcon>
@@ -177,6 +201,19 @@ export default function HistoryPage() {
           ))}
         </List>
       )}
+      <Dialog open={!!deleteTarget} onClose={() => setDeleteTarget(null)}>
+        <DialogTitle>Delete Workout</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            Delete this {deleteTarget ? workoutTypeDisplayNames[deleteTarget.workoutType as WorkoutType] || deleteTarget.workoutType : ''} workout
+            from {deleteTarget ? format(parseISO(deleteTarget.dateTime), 'MMM dd, yyyy') : ''}?
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDeleteTarget(null)}>Cancel</Button>
+          <Button onClick={handleDelete} color="error">Delete</Button>
+        </DialogActions>
+      </Dialog>
     </Layout>
   );
 }
